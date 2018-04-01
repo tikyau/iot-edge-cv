@@ -1,0 +1,41 @@
+FROM microsoft/dotnet:2.0-sdk AS build-env
+
+RUN apt-get update && \
+      apt-get -y install sudo
+
+### Build raspistill
+FROM resin/rpi-raspbian
+RUN apt-get update \
+	&& apt-get install -y \
+    		build-essential \
+		cmake \
+    		curl \
+    		git \
+ 	&& apt-get clean \
+ 	&& rm -rf /var/lib/apt/lists/*
+
+WORKDIR /
+RUN git clone --depth 1 https://github.com/raspberrypi/userland.git
+
+WORKDIR /userland
+RUN chmod +x buildme
+RUN ./buildme
+
+RUN usermod -a -G video root
+CMD modprobe bcm2835-v4l2
+# End Build raspistill
+
+WORKDIR /app
+
+COPY *.csproj ./
+RUN dotnet restore
+
+COPY . ./
+RUN dotnet publish -c Release -o out
+
+FROM microsoft/dotnet:2.0-runtime-stretch-arm32v7
+WORKDIR /app
+COPY --from=build-env /app/out ./
+#CMD ["apt-get", "install", "libraspberrypi-bin", "-y"]
+CMD ["raspistill","-o", "test.jpg"]
+#ENTRYPOINT ["dotnet", "CameraModule2.dll"]

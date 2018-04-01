@@ -1,0 +1,35 @@
+FROM resin/rpi-raspbian:jessie as runtime-env
+
+### Tools setup
+RUN apt-get update && \
+      apt-get -y install sudo
+RUN apt-get upgrade -y
+RUN apt-get install gnupg gnupg2 -y
+RUN echo "deb http://archive.raspberrypi.org/debian/ jessie main" >> /etc/apt/sources.list
+
+RUN apt-get install -y wget
+RUN apt-get install libraspberrypi-bin -y --allow-unauthenticated
+RUN usermod -a -G video root
+
+### Install .net core 2.0 sdk ###
+RUN apt-get install -y curl libunwind8 gettext
+RUN curl -sSL -o dotnet.tar.gz https://dotnetcli.blob.core.windows.net/dotnet/Runtime/release/2.0.0/dotnet-runtime-latest-linux-arm.tar.gz
+RUN mkdir -p /opt/dotnet && sudo tar zxf dotnet.tar.gz -C /opt/dotnet
+RUN ln -s /opt/dotnet/dotnet /usr/local/bin
+
+### Build C# Module
+FROM microsoft/dotnet:2.0-sdk AS build-env
+RUN mkdir /app
+WORKDIR /app
+
+COPY *.csproj ./
+RUN dotnet restore
+
+COPY . ./
+RUN dotnet publish -c Release -o out
+
+### Deploy and Configure IoT Edge Module
+FROM runtime-env
+WORKDIR /app
+COPY --from=build-env /app/out ./
+ENTRYPOINT ["dotnet", "CameraModule2.dll"]
